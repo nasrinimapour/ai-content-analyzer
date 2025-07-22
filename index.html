@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Content Analyzer (No API)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- AI Model Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+    <script type="module">
+        // Use ESM import for transformers.js
+        import { pipeline, RawImage } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1';
+        window.pipeline = pipeline;
+        window.RawImage = RawImage;
+    </script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 sm:p-8 max-w-4xl">
+        <div class="bg-white rounded-2xl shadow-lg p-6 sm:p-8">
+            <h1 class="text-3xl font-bold text-center mb-2 text-gray-900">Image Content Analyzer (CLIP)</h1>
+            <p class="text-center text-gray-600 mb-6">Upload an image and optionally provide the text prompt used to generate it. All processing is done in your browser.</p>
+
+            <!-- Prompt Input -->
+            <div class="mb-6">
+                <label for="promptInput" class="block text-sm font-medium text-gray-700 mb-2">Image Generation Prompt (Optional)</label>
+                <input type="text" id="promptInput" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., 'a photo of a person holding a sign'">
+            </div>
+
+            <!-- Image Upload -->
+            <div class="mb-6">
+                 <label for="imageUpload" class="block text-sm font-medium text-gray-700 mb-2">Upload Image</label>
+                <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+                    <div class="space-y-1 text-center">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <div class="flex text-sm text-gray-600">
+                            <label for="imageUpload" class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                                <span>Upload a file</span>
+                                <input id="imageUpload" name="imageUpload" type="file" class="sr-only" accept="image/*">
+                            </label>
+                            <p class="pl-1">or drag and drop</p>
+                        </div>
+                        <p class="text-xs text-gray-500">PNG, JPG, GIF up to 10MB</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analyze Button -->
+            <div class="text-center mb-6">
+                <button id="analyzeBtn" class="w-full sm:w-auto bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 transition-colors duration-300" disabled>
+                    Analyze Image & Prompt
+                </button>
+            </div>
+
+            <!-- Results Section -->
+            <div id="results" class="hidden">
+                <div id="loader" class="loader mx-auto my-8 hidden"></div>
+                <div id="status" class="text-center text-gray-600 my-4"></div>
+                <div id="error" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative my-4 hidden" role="alert"></div>
+                
+                <div id="analysisOutput">
+                    <h2 class="text-2xl font-bold mb-4 border-b pb-2">Analysis Results</h2>
+                    <div class="relative">
+                        <img id="imagePreview" class="w-full h-auto rounded-lg" alt="Image Preview">
+                        <canvas id="canvas" class="absolute top-0 left-0 w-full h-full"></canvas>
+                    </div>
+                    <div id="explanation" class="mt-4 p-4 bg-gray-50 rounded-lg"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const imageUpload = document.getElementById('imageUpload');
+        const promptInput = document.getElementById('promptInput');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const resultsDiv = document.getElementById('results');
+        const loader = document.getElementById('loader');
+        const statusDiv = document.getElementById('status');
+        const errorDiv = document.getElementById('error');
+        const canvas = document.getElementById('canvas');
+        const imagePreview = document.getElementById('imagePreview');
+        const explanationDiv = document.getElementById('explanation');
+        const analysisOutput = document.getElementById('analysisOutput');
+
+        let imageDataUrl = null;
+        let cocoSsdModel = null;
+        let clipClassifier = null;
+
+        const HATEFUL_KEYWORDS = ['terrorist', 'sympathizer', 'hate', 'kill', 'nazi', 'supremacy', 'racist'];
+
+        async function loadModels() {
+            if (cocoSsdModel && clipClassifier) return;
+            
+            analyzeBtn.disabled = true;
+            statusDiv.classList.remove('hidden');
+            
+            if (!cocoSsdModel) {
+                statusDiv.textContent = 'Loading Object Detection Model...';
+                cocoSsdModel = await cocoSsd.load();
+            }
+            if (!clipClassifier) {
+                statusDiv.textContent = 'Loading CLIP Model (this may take a moment)...';
+                clipClassifier = await window.pipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32');
+            }
+            
+            statusDiv.textContent = 'Models loaded. Ready to analyze.';
+            analyzeBtn.disabled = false;
+        }
+        
+        imageUpload.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imageDataUrl = e.target.result;
+                    imagePreview.src = imageDataUrl;
+                    resultsDiv.classList.add('hidden');
+                    loadModels();
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        analyzeBtn.addEventListener('click', async () => {
+            if (!imageDataUrl) {
+                showError("Please upload an image first.");
+                return;
+            }
+
+            resultsDiv.classList.remove('hidden');
+            analysisOutput.classList.add('hidden');
+            loader.classList.remove('hidden');
+            statusDiv.classList.remove('hidden');
+            errorDiv.classList.add('hidden');
+            explanationDiv.innerHTML = '';
+            
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            try {
+                const [ocrResult, objectResult] = await Promise.all([
+                    runTextRecognition(),
+                    runObjectDetection()
+                ]);
+                await handleAnalysisResponse(ocrResult, objectResult);
+            } catch (err) {
+                showError(`Analysis failed: ${err.message}`);
+            } finally {
+                loader.classList.add('hidden');
+                statusDiv.classList.add('hidden');
+            }
+        });
+        
+        async function runTextRecognition() {
+            statusDiv.textContent = 'Performing text recognition...';
+            const worker = await Tesseract.createWorker('eng', 1, {
+                logger: m => {
+                    if (m.status === 'recognizing text') {
+                         statusDiv.textContent = `Recognizing Text (${(m.progress * 100).toFixed(0)}%)`;
+                    }
+                },
+            });
+            const { data } = await worker.recognize(imageDataUrl);
+            await worker.terminate();
+            return data;
+        }
+
+        async function runObjectDetection() {
+            statusDiv.textContent = 'Performing object detection...';
+            const img = document.getElementById('imagePreview');
+            const predictions = await cocoSsdModel.detect(img);
+            return predictions;
+        }
+
+        async function handleAnalysisResponse(ocrData, objectData) {
+            analysisOutput.classList.remove('hidden');
+            
+            const img = document.getElementById('imagePreview');
+            const ctx = canvas.getContext('2d');
+            canvas.width = img.clientWidth;
+            canvas.height = img.clientHeight;
+            
+            let explanationHtml = '<h3 class="font-bold text-lg mb-2">Detailed Findings:</h3><ul class="list-disc list-inside space-y-2">';
+            
+            // --- 1. Analyze the Prompt ---
+            const promptText = promptInput.value;
+            let promptIsHateful = false;
+            if (promptText) {
+                promptIsHateful = HATEFUL_KEYWORDS.some(keyword => promptText.toLowerCase().includes(keyword));
+                if (promptIsHateful) {
+                    explanationHtml += `<li class="text-red-700"><span class="font-semibold">Hateful Prompt Detected:</span> The input prompt contained hateful keywords. Prompt: "<em class="italic">${promptText}</em>"</li>`;
+                } else {
+                    explanationHtml += `<li class="text-green-700"><span class="font-semibold">Prompt Analysis:</span> The prompt appears to be neutral.</li>`;
+                }
+            }
+
+            // --- 2. Analyze the Image Content ---
+            const hatefulWords = (ocrData.words || []).filter(word => 
+                HATEFUL_KEYWORDS.some(keyword => word.text.toLowerCase().includes(keyword))
+            );
+
+            let imageHasHatefulObjects = false;
+            if (objectData && objectData.length > 0) {
+                explanationHtml += `<li class="text-gray-700"><span class="font-semibold">Object Analysis:</span> Found ${objectData.length} object(s). Classifying with CLIP...</li>`;
+                
+                for (let i = 0; i < objectData.length; i++) {
+                    const prediction = objectData[i];
+                    statusDiv.textContent = `Classifying object ${i + 1}/${objectData.length} with CLIP...`;
+                    
+                    const croppedImage = await cropObject(prediction.bbox);
+                    const clipLabels = ["a photo of a hateful symbol", "a photo of a protest", "a photo of a neutral object"];
+                    const clipResult = await clipClassifier(croppedImage, clipLabels);
+
+                    const isHatefulByClip = clipResult[0].label === "a photo of a hateful symbol" && clipResult[0].score > 0.6;
+                     
+                    const [x, y, width, height] = prediction.bbox;
+                    const bbox = { x0: x, y0: y, x1: x + width, y1: y + height };
+
+                    if (isHatefulByClip) {
+                        imageHasHatefulObjects = true;
+                        drawBoundingBox(ctx, bbox, '#FF0000', `Hateful ${prediction.class}`);
+                        explanationHtml += `<li class="text-red-700"><span class="font-semibold">Hateful Object Detected:</span> A "${prediction.class}" was classified as a potential hateful symbol by CLIP with a confidence of ${(clipResult[0].score * 100).toFixed(1)}%.</li>`;
+                    } else {
+                        drawBoundingBox(ctx, bbox, '#3498db', `${prediction.class}`);
+                    }
+                }
+            }
+
+            hatefulWords.forEach(word => {
+                 drawBoundingBox(ctx, word.bbox, '#E53E3E', 'Hateful Keyword');
+                 explanationHtml += `<li class="text-red-700"><span class="font-semibold">Flagged Word in Image:</span> Found <em class="italic">"${word.text}"</em>.</li>`;
+            });
+
+            // --- 3. Final Assessment ---
+            explanationHtml += '<li class="mt-4 font-bold">Overall Assessment:</li>';
+            if (promptIsHateful || hatefulWords.length > 0 || imageHasHatefulObjects) {
+                 explanationHtml += `<p class="p-2 bg-red-100 rounded text-red-800">This content is flagged as potentially hateful based on an analysis of the prompt, image text, or visual objects.</p>`;
+            } else {
+                 explanationHtml += `<p class="p-2 bg-green-100 rounded text-green-800">This content does not appear to be hateful based on the analysis.</p>`;
+            }
+
+            explanationHtml += '</ul>';
+            explanationDiv.innerHTML = explanationHtml;
+        }
+        
+        async function cropObject(bbox) {
+            const [x, y, width, height] = bbox;
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            tempCtx.drawImage(imagePreview, x, y, width, height, 0, 0, width, height);
+            
+            const dataUrl = tempCanvas.toDataURL();
+            return await window.RawImage.fromURL(dataUrl);
+        }
+
+        function drawBoundingBox(ctx, bbox, color, label) {
+            const scaleX = canvas.width / imagePreview.naturalWidth;
+            const scaleY = canvas.height / imagePreview.naturalHeight;
+
+            const x = (bbox.x0 ?? bbox[0]) * scaleX;
+            const y = (bbox.y0 ?? bbox[1]) * scaleY;
+            const width = ((bbox.x1 - bbox.x0) || bbox[2]) * scaleX;
+            const height = ((bbox.y1 - bbox.y0) || bbox[3]) * scaleY;
+
+            ctx.beginPath();
+            ctx.rect(x, y, width, height);
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = color;
+            ctx.stroke();
+            
+            ctx.fillStyle = color;
+            ctx.font = 'bold 14px Inter';
+            ctx.textBaseline = 'top';
+            const textWidth = ctx.measureText(label).width;
+            ctx.fillRect(x, y - 18, textWidth + 4, 18);
+            
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(label, x + 2, y - 16);
+        }
+
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+            resultsDiv.classList.remove('hidden');
+            analysisOutput.classList.add('hidden');
+            loader.classList.add('hidden');
+            statusDiv.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
