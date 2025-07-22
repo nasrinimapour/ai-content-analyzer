@@ -8,7 +8,7 @@ This is a powerful, client-side tool for analyzing image content using a multi-l
 
 * Object Detection: Employs a COCO-SSD model via TensorFlow.js to identify and locate up to 80 common objects.
 
-* Contextual Object Classification (CLIP): For each detected object, the tool uses OpenAI's CLIP model (via transformers.js) to classify whether the object represents a hateful symbol or a neutral object.
+* Contextual Object Classification with CLIP: For each detected object, the tool uses OpenAI's CLIP (Contrastive Language–Image Pre-training) model (via transformers.js) to classify whether the object represents a hateful symbol or a neutral object.
 
 * Keyword Flagging: Scans both the input prompt and the recognized image text for a customizable list of hateful keywords.
 
@@ -21,7 +21,7 @@ The tool performs a multi-step analysis to determine if content is potentially h
 
 2. Object Detection: It identifies all objects in the uploaded image.
 
-3. CLIP Classification: Each detected object is isolated and classified by CLIP to determine if it is visually similar to a "hateful symbol."
+3. CLIP Classification: Each detected object is isolated and classified by CLIP to determine if it is visually similar to a hateful symbol.
 
 4. Text Recognition: It reads all text present in the image.
 
@@ -39,7 +39,7 @@ This tool flags content based on three primary signals:
 # How to Use
 1. Download the index.html file from this repository.
 
-2. Open the index.html file in a modern web browser (like Chrome, Firefox, or Edge).
+2. Open the index.html file in a web browser (like Chrome, Firefox, or Edge).
 
 3. The necessary AI models will begin to download automatically. This may take a moment on the first run.
 
@@ -50,13 +50,13 @@ This tool flags content based on three primary signals:
 6. Click the "Analyze Image & Prompt" button to see the results.
 
 # Limitations
-Model Size & Performance: The AI models, especially CLIP, are large and can be slow to download and run, particularly on older hardware.
+* Model Size & Performance: The AI models, especially CLIP, are large and can be slow to download and run, particularly on older hardware.
 
-Hate Symbol Recognition: The CLIP model's ability to identify hate symbols is based on its training data and the text prompts used for classification. It is a powerful tool for contextual understanding, but may not be exhaustive or perfect.
+* Hate Symbol Recognition: The CLIP model's ability to identify hate symbols is based on its training data and the text prompts used for classification. It is a powerful tool for contextual understanding, but may not be exhaustive or perfect.
 
-Keyword List: The list of hateful keywords is for demonstration purposes and is not comprehensive.
+* Keyword List: The list of hateful keywords is for demonstration purposes and is not comprehensive.
 
 # Contributing
 Contributions are welcome! Please feel free to fork the repository, make changes, and submit a pull request.
 
-This tool is for educational and demonstration purposes to showcase modern, client-side AI capabilities.
+This tool is for educational and demonstration purposes to showcase client-side AI capabilities.
