@@ -1,5 +1,5 @@
 ## AI-Powered Content Analyzer
-This is a powerful, client-side tool for analyzing image content using a multi-layered AI approach. It runs entirely in the browser with no need for server-side processing or API keys, leveraging open-source models to provide a comprehensive analysis of both text and visual elements within an image.
+This is a client-side tool for analyzing image content using a multi-layered AI approach. It runs entirely in the browser with no need for server-side processing or API keys, leveraging open-source models to provide a comprehensive analysis of both text and visual elements within an image.
 
 # Features
 * Dual-Channel Analysis: Analyzes both the text prompt used to generate an image and the final image content itself.
